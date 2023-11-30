@@ -52,7 +52,7 @@ For example if we assume that the system has detected cars at the following time
 My Notes:
 - I see how centralized aggregation on DB could be handy
   - background aggregate and store separately
-- I created SQL 👾 that I don't even dare to `EXPLAIN ...`
+- I [created SQL 👾](https://github.com/search?q=repo%3Alukmdo%2Fcoram_ai_assignment%20%22def%20aggregate_events%22&type=code) that I don't even dare to `EXPLAIN ...`
   - learned [`LAG/LEAD() OVER()`](https://www.postgresql.org/docs/13/functions-window.html)
   - refreshed my SQL unions/joins and found
 ```
