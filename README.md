@@ -17,9 +17,19 @@ The events are stored in postgres database the backend interacts with. In our ca
 All tasks should be implemented within `main.py` file:
 
 ### Ingestion
-To start off, please complete the `ingest_data` function - feel free to change the signature if you want to. Please also consider the implications of the code - performance, maintenance, etc.  
-The events have a timestamp and a type property. The type will always be one of a set of pre-defined strings - "pedestrian", "bicycle", "car", "truck", "van". Assume the events are ordered.
+To start off, please complete the `ingest_data` function - feel free to change the signature if you want to. Please also consider the implications of the code - performance, maintenance, etc.
+The events have a "time" and a "type" property. The "type" will always be one of a set of pre-defined strings - "pedestrian", "bicycle", "car", "truck", "van". Assume the events are ordered.
 
+My Notes:
+```shell
+# server
+docker run -it --rm -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=postgres postgres:13.7-alpine
+# cli
+docker run -it --network host -e PGPASSWORD=postgres --rm postgres:13.7-alpine psql -h 127.0.0.1 -U postgres
+```
+- required server-side values binding (security and performance for bulk)
+- ideally would single `prepare` with multiple `bind` (each in bulk) however `psycopg2` does not supprt it ( maybe good reason )
+- tests skipped and used e2e test to keep 2h task limit
 
 ### Aggregation
 We'd like to show our user an overview of the events in the database. To do that please complete the "aggregate_events" function, so that it returns **two lists of periods of activity**. One should contain the activity of people who were detected (the "pedestrian" and "bicycle" event types) and the other should contain the activity of vehicles (the "car", "truck" and "van" event types).
