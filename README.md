@@ -63,3 +63,14 @@ SELECT * FROM (VALUES (1, 2), (10, 20)) as x(a, b)
 The last part is related to real-time alerts for unusual events. Our users would like to be notified if a person is detected for a continued period of time. Imagine that the ingestion function is called real-time as the detections happen every 30 seconds.
 
 Please add additional logic to the ingestion function which will print to the console if a person is detected in 5 consecutive events. Please consider performance - the ingestion function will be called very often.
+
+My Notes:
+Ambiguous for me so I assert:
+- can rely on events being sorted
+- alert only for "pedestrian"
+- using only data to ingest - no lookups / memoization
+- consecutive events are spaced 30s apart ( bigger gap will split )
+- one alert per ingest is enough ( no significant difference )
+- modified `ingest_events(conn, events)` is still OK
+- keeping `ingest_events(conn, event)`
+- `maybe_alert` not tested (ex. 2h limit)

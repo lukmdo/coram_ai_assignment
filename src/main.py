@@ -12,6 +12,8 @@ import sqlalchemy.exc as saError
 DB_CONN_URI = "postgresql://postgres:postgres@postgres:5432/postgres"
 # DB_CONN_URI = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
 DB_INGEST_BULK_SIZE = 1000
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
 
 Timestamp = NewType('Timestamp', str)
 EventType = NewType('EventType', str)
@@ -51,9 +53,34 @@ def _database_connection() -> sa.Connection:
     return conn
 
 
+def maybe_alert(events: Iterable[Event], min_seq_size: int, seq_max_sep: int) -> None:
+    seq_size = 0
+    seq_last_datetime = None
+
+    for event_time, event_type in events:
+        if event_type != "pedestrian":
+            continue
+
+        event_datetime = datetime.datetime.strptime(event_time, TIMESTAMP_FORMAT)
+
+        if seq_size:
+            if (event_datetime - seq_last_datetime).total_seconds() > seq_max_sep:
+                # begin new sequence
+                seq_size = 1
+            else:
+                seq_size += 1
+                if seq_size >= min_seq_size:
+                    print(f"ALERT - {min_seq_size=} at {event_time=}")
+                    return
+        else:
+            seq_size = 1
+            seq_last_datetime = event_datetime
+
+
 def ingest_events(conn: sa.Connection, events: Iterable[Event],
                   bulk_size: int = DB_INGEST_BULK_SIZE) -> None:
     with conn.connection.cursor() as cx:
+        maybe_alert(events, 5, 30)
         psycopg2.extras.execute_values(
             cx,
             "INSERT into events(time, type) VALUES %s",
