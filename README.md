@@ -49,6 +49,15 @@ For example if we assume that the system has detected cars at the following time
 ```
 **Please have the whole aggregation logic in SQL.**
 
+My Notes:
+- I see how centralized aggregation on DB could be handy
+  - background aggregate and store separately
+- I created SQL 👾 that I don't even dare to `EXPLAIN ...`
+  - learned [`LAG/LEAD() OVER()`](https://www.postgresql.org/docs/13/functions-window.html)
+  - refreshed my SQL unions/joins and found
+```
+SELECT * FROM (VALUES (1, 2), (10, 20)) as x(a, b)
+```
 
 ### Alerts
 The last part is related to real-time alerts for unusual events. Our users would like to be notified if a person is detected for a continued period of time. Imagine that the ingestion function is called real-time as the detections happen every 30 seconds.

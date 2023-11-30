@@ -1,14 +1,16 @@
+import datetime
+import json
 import time
-from typing import *
-from contextlib import contextmanager
 from collections import defaultdict
+from contextlib import contextmanager
+from typing import *
 
 import psycopg2.extras
 import sqlalchemy as sa
 import sqlalchemy.exc as saError
 
 DB_CONN_URI = "postgresql://postgres:postgres@postgres:5432/postgres"
-#DB_CONN_URI = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+# DB_CONN_URI = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
 DB_INGEST_BULK_SIZE = 1000
 
 Timestamp = NewType('Timestamp', str)
@@ -49,26 +51,99 @@ def _database_connection() -> sa.Connection:
     return conn
 
 
-def ingest_events(conn: sa.Connection, events: Iterable[Event], bulk_size: int = DB_INGEST_BULK_SIZE) -> None:
-
-    with conn.connection.cursor() as c:
-        psycopg2.extras.execute_values(c,
+def ingest_events(conn: sa.Connection, events: Iterable[Event],
+                  bulk_size: int = DB_INGEST_BULK_SIZE) -> None:
+    with conn.connection.cursor() as cx:
+        psycopg2.extras.execute_values(
+            cx,
             "INSERT into events(time, type) VALUES %s",
             events,
             page_size=bulk_size,
         )
 
-def aggregate_events(conn: sa.Connection) -> dict[str, list[tuple[str, str]]]:
-    return {
-        "people": [
-            ("2023-08-10T10:00:00", "2023-08-10T10:02:00"),
-            ("2023-08-10T10:04:00", "2023-08-10T10:05:00"),
-        ],
-        "vehicles": [
-            ("2023-08-10T10:00:00", "2023-08-10T10:02:00"),
-            ("2023-08-10T10:05:00", "2023-08-10T10:07:00"),
-        ],
-    }
+
+def aggregate_events(conn: sa.Connection, begin: Timestamp, end: Timestamp) -> \
+dict[str, list[tuple[Timestamp, Timestamp]]]:
+
+    sql = """
+WITH tmp_begins AS (
+  SELECT
+    row_number() over () as id,
+    new_type,
+    time as time_start
+    FROM (
+      SELECT
+        time,
+        CASE
+          WHEN type IN ('pedestrian', 'bicycle') THEN 'people'
+          WHEN type IN ('van', 'car', 'truck') THEN 'vehicles'
+        END as new_type,
+        LAG(time) OVER (PARTITION BY (
+          CASE
+            WHEN type IN ('pedestrian', 'bicycle') THEN 'people'
+            WHEN type IN ('van', 'car', 'truck') THEN 'vehicles'
+          END
+        ) ORDER BY time) as l
+      FROM events
+      WHERE
+        time BETWEEN :time_begin AND :time_end
+    ) as x
+  WHERE
+    l IS NULL OR time - l > INTERVAL '1 minute'
+  ORDER BY
+    new_type, time
+  ), tmp_ends AS (
+  SELECT
+    row_number() over () as id,
+    new_type,
+    time as time_end
+  FROM (
+    SELECT
+      time,
+      CASE
+        WHEN type IN ('pedestrian', 'bicycle') THEN 'people'
+        WHEN type IN ('van', 'car', 'truck') THEN 'vehicles'
+      END as new_type,
+      LEAD(time) OVER (PARTITION BY (
+        CASE
+          WHEN type IN ('pedestrian', 'bicycle') THEN 'people'
+          WHEN type IN ('van', 'car', 'truck') THEN 'vehicles'
+        END
+      ) ORDER BY time) as l
+    FROM events
+    WHERE
+      time BETWEEN :time_begin AND :time_end
+  ) as x
+  WHERE
+    l IS NULL OR l - time > INTERVAL '1 minute'
+  ORDER BY
+    new_type, time
+  )
+
+SELECT * FROM tmp_begins
+NATURAL LEFT JOIN  tmp_ends
+"""
+    results = conn.execute(
+        sa.text(sql),
+        {"time_begin": begin, "time_end": end},
+    )
+
+    response = defaultdict(list)
+    _ = response["people"]
+    _ = response["vehicles"]
+
+
+    for row in results:
+        response[row[1]].append((row[2], row[3]))
+
+    return response
+
+
+def _json_serializer(obj):
+    if isinstance(obj, (datetime.datetime, datetime.date)):
+        obj = obj.replace(tzinfo=None)
+        return obj.isoformat()
+    raise TypeError ("Type %s not serializable" % type(obj))
 
 
 def main():
@@ -86,10 +161,17 @@ def main():
     ]
 
     with database_connection() as conn:
-        ingest_events(conn, events)
+        # ingest_events(conn, events)
 
-        aggregate_results = aggregate_events(conn)
-        print(aggregate_results)
+        results = aggregate_events(
+            conn,
+            begin="2023-08-10",
+            end="2023-08-11",
+        )
+        print(
+            "aggregate_events",
+            json.dumps(results, indent=2, sort_keys=True, default=_json_serializer)
+        )
 
 
 if __name__ == "__main__":
